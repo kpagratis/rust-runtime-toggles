@@ -1,0 +1,11 @@
+alwaysOn:
+  value: 1.0
+  description: "always allow"
+
+halfOn:
+  value: .5
+  description: "allow 50% of the time"
+
+alwaysOff:
+  value: 0
+  description: "never allow"
