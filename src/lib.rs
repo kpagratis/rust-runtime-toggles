@@ -39,7 +39,8 @@ impl ToggleData {
         let d: HashMap<String, YamlToggleItem> = serde_yaml::from_str(&contents).unwrap();
 
         self.toggles = d.iter().map(|(key, value)| {
-            println!("setting {}, description: {} to value: {}", key, value.value, value.description);
+            let description: String = value.description.clone().unwrap_or("NO_DESCRIPTION".to_string());
+            println!("setting {} ({}) to value: {}", key, description, value.value);
             (String::from(key), value.value)
         }).collect();
     }
@@ -48,7 +49,7 @@ impl ToggleData {
 #[derive(Deserialize)]
 pub struct YamlToggleItem {
     value: f32,
-    description: String,
+    description: Option<String>,
 }
 
 #[derive(Debug)]
@@ -80,7 +81,7 @@ impl Toggle {
     pub fn start(toggle: &Toggle) {
         let mut clone: RwLockWriteGuard<ToggleData> = toggle.data.write().unwrap();
         clone.update_values(&toggle.config_file_path);
-        toggle.watcher.lock().unwrap().watch(Path::new("./toggle.yaml"), NonRecursive).unwrap();
+        toggle.watcher.lock().unwrap().watch(Path::new(&toggle.config_file_path), NonRecursive).unwrap();
     }
 
     pub fn is_available(&self, toggle_name: &str) -> bool {
