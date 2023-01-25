@@ -69,7 +69,6 @@ impl Toggle {
                 match res {
                     Ok(Event { kind: Modify(Data(Content)), .. }) => {
                         data.write().unwrap().update_values(&path.lock().unwrap().to_string());
-                        // println!("event: {:?}", event)
                     }
                     Err(e) => println!("watch error: {:?}", e),
                     _ => (),
