@@ -1,19 +1,18 @@
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::Read;
-use std::sync::{Arc, RwLock};
-use std::time::Duration;
+use std::path::Path;
+use std::sync::{Arc, Mutex, RwLock, RwLockWriteGuard};
 
-use clokwerk::{ScheduleHandle, Scheduler, TimeUnits};
-use rand::Rng;
+use notify::{Event, RecommendedWatcher, Watcher};
+use notify::event::DataChange::Content;
+use notify::event::ModifyKind::Data;
+use notify::EventKind::Modify;
+use notify::RecursiveMode::NonRecursive;
+use rand::{Rng, thread_rng};
 use serde_derive::Deserialize;
 
-pub struct Toggles {
-    config_file_path: String,
-    data: Arc<RwLock<ToggleData>>,
-    update_duration: Duration,
-}
-
+#[derive(Debug)]
 pub struct ToggleData {
     toggles: HashMap<String, f32>,
     loaded: bool,
@@ -52,49 +51,41 @@ pub struct YamlToggleItem {
     description: String,
 }
 
-impl Toggles {
-    pub fn new(config_file_path: &str) -> Toggles {
-        Toggles {
+#[derive(Debug)]
+pub struct Toggle {
+    config_file_path: String,
+    watcher: RecommendedWatcher,
+    data: Arc<RwLock<ToggleData>>,
+}
+
+impl Toggle {
+    pub fn new(config_file_path: &str) -> Toggle {
+        let data: Arc<RwLock<ToggleData>> = Arc::new(RwLock::new(ToggleData::default()));
+        let path: Arc<Mutex<String>> = Arc::new(Mutex::new(config_file_path.to_string()));
+        Toggle {
             config_file_path: config_file_path.to_string(),
-            update_duration: Duration::from_secs(10),
-            data: Arc::new(RwLock::new(ToggleData::default())),
+            data: data.clone(),
+            watcher: notify::recommended_watcher(move |res| {
+                match res {
+                    Ok(Event{kind: Modify(Data(Content)), .. }) => {
+                        data.write().unwrap().update_values(&path.lock().unwrap().to_string());
+                        // println!("event: {:?}", event)
+                    },
+                    Err(e) => println!("watch error: {:?}", e),
+                    _ => (),
+                }
+            }).unwrap()
         }
     }
 
-    pub fn new_with_duration(config_file_path: &str, update_duration: Duration) -> Toggles {
-        Toggles {
-            update_duration,
-            config_file_path: config_file_path.to_string(),
-            data: Arc::new(RwLock::new(ToggleData::default())),
-        }
-    }
-
-    pub fn start(toggles: &Toggles) -> Option<ScheduleHandle> {
-        let config_file = String::from(&toggles.config_file_path);
-        let seconds: u32 = toggles.update_duration.as_secs() as u32;
-
-        let clone = toggles.data.clone();
-        let mut write = clone.write().unwrap();
-
-        if write.loaded {
-            return None;
-        }
-
-        let mut _scheduler = Scheduler::new();
-        let clone: Arc<RwLock<ToggleData>> = toggles.data.clone();
-
-        write.update_values(&config_file);
-
-        _scheduler
-            .every(seconds.seconds())
-            .run(move || {
-                clone.write().unwrap().update_values(&config_file);
-            });
-        Some(_scheduler.watch_thread(Duration::from_millis(0)))
+    pub fn start(toggle: &mut Toggle) {
+        let mut clone: RwLockWriteGuard<ToggleData> = toggle.data.write().unwrap();
+        clone.update_values(&toggle.config_file_path);
+        toggle.watcher.watch(Path::new("./toggle.yaml"), NonRecursive).unwrap();
     }
 
     pub fn is_available(&self, toggle_name: &str) -> bool {
-        let r: f32 = rand::thread_rng().gen();
+        let r: f32 = thread_rng().gen();
         let read = self.data.read().unwrap();
         let binding: Option<&f32> = read.toggles.get(&toggle_name.to_string());
         match binding {
