@@ -54,7 +54,7 @@ pub struct YamlToggleItem {
 #[derive(Debug)]
 pub struct Toggle {
     config_file_path: String,
-    watcher: RecommendedWatcher,
+    watcher: Arc<Mutex<RecommendedWatcher>>,
     data: Arc<RwLock<ToggleData>>,
 }
 
@@ -65,23 +65,23 @@ impl Toggle {
         Toggle {
             config_file_path: config_file_path.to_string(),
             data: data.clone(),
-            watcher: notify::recommended_watcher(move |res| {
+            watcher: Arc::new(Mutex::new(notify::recommended_watcher(move |res| {
                 match res {
-                    Ok(Event{kind: Modify(Data(Content)), .. }) => {
+                    Ok(Event { kind: Modify(Data(Content)), .. }) => {
                         data.write().unwrap().update_values(&path.lock().unwrap().to_string());
                         // println!("event: {:?}", event)
-                    },
+                    }
                     Err(e) => println!("watch error: {:?}", e),
                     _ => (),
                 }
-            }).unwrap()
+            }).unwrap())),
         }
     }
 
-    pub fn start(toggle: &mut Toggle) {
+    pub fn start(toggle: &Toggle) {
         let mut clone: RwLockWriteGuard<ToggleData> = toggle.data.write().unwrap();
         clone.update_values(&toggle.config_file_path);
-        toggle.watcher.watch(Path::new("./toggle.yaml"), NonRecursive).unwrap();
+        toggle.watcher.lock().unwrap().watch(Path::new("./toggle.yaml"), NonRecursive).unwrap();
     }
 
     pub fn is_available(&self, toggle_name: &str) -> bool {
